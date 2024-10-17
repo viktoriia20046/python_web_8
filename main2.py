@@ -1,10 +1,7 @@
 import json
-import re
-import pika
-import redis
-from mongoengine import Document, StringField, connect, ReferenceField, ListField
-from dotenv import load_dotenv
 import os
+from mongoengine import Document, StringField, ReferenceField, ListField, connect
+from dotenv import load_dotenv
 
 # Завантажуємо змінні з .env файлу
 load_dotenv()
@@ -24,61 +21,72 @@ class Author(Document):
 
 # Модель для цитат
 class Quote(Document):
-    author = ReferenceField(Author)
-    quote = StringField()
+    author = ReferenceField(Author, reverse_delete_rule='CASCADE')
+    quote_text = StringField(required=True)
+    tags = ListField(StringField())
 
 # Завантаження авторів з файлу authors.json
 def load_authors():
-    with open('authors.json', 'r', encoding='utf-8') as file:
+    with open('authors.json', 'r') as file:
         authors_data = json.load(file)
         for author_data in authors_data:
-            author = Author(**author_data)
+            author = Author(
+                fullname=author_data['fullname'],
+                born_date=author_data.get('born_date', ''),
+                born_location=author_data.get('born_location', ''),
+                description=author_data.get('description', '')
+            )
             author.save()
-        print("Автори успішно завантажені.")
+    print("Автори успішно завантажені.")
 
-# Пошук цитат за ім'ям автора
-def search_quotes():
-    command = input("Enter command (name:author_name or exit): ").strip()
-    if command.startswith("name:"):
-        author_name = command.split(":")[1].strip()
-        try:
-            author = Author.objects(fullname=author_name).first()
+# Завантаження цитат з файлу quotes.json
+def load_quotes():
+    with open('quotes.json', 'r') as file:
+        quotes_data = json.load(file)
+        for quote_data in quotes_data:
+            author = Author.objects(fullname=quote_data['author']).first()
             if author:
-                quotes = Quote.objects(author=author)
-                for quote in quotes:
-                    print(f"Цитата: {quote.quote}")
-            else:
-                print("Автор не знайдений.")
-        except Exception as e:
-            print(f"Сталася помилка: {str(e)}")
-    elif command == "exit":
-        return
+                quote = Quote(
+                    author=author,
+                    quote_text=quote_data['quote'],
+                    tags=quote_data.get('tags', [])
+                )
+                quote.save()
+    print("Цитати успішно завантажені.")
+
+# Функція для пошуку цитат
+def search_quotes():
+    author_name = input("Введіть ім'я автора: ").strip()
+    author = Author.objects(fullname=author_name).first()
+    if author:
+        quotes = Quote.objects(author=author)
+        if quotes:
+            for quote in quotes:
+                print(f"Цитата: {quote.quote_text}")
+                print(f"Теги: {', '.join(quote.tags)}")
+        else:
+            print(f"Цитати для автора {author_name} не знайдені.")
     else:
-        print("Невірна команда.")
+        print(f"Автор {author_name} не знайдений.")
 
 # Головне меню
 def main_menu():
     while True:
-        print("1. Load authors and quotes")
-        print("2. Search quotes")
-        print("3. Produce contacts")
-        print("4. Consume emails")
-        print("5. Consume SMS")
-        
-        choice = input("Choose an option: ").strip()
+        print("1. Завантажити авторів та цитати")
+        print("2. Шукати цитати")
+        print("3. Вийти")
+        choice = input("Оберіть опцію: ").strip()
 
         if choice == '1':
             load_authors()
+            load_quotes()
         elif choice == '2':
             search_quotes()
         elif choice == '3':
-            print("Функція недоступна")
-        elif choice == '4':
-            print("Функція недоступна")
-        elif choice == '5':
-            print("Функція недоступна")
+            print("До побачення!")
+            break
         else:
-            print("Невірний вибір. Спробуйте знову.")
+            print("Неправильний вибір, спробуйте ще раз.")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main_menu()
