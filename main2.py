@@ -2,8 +2,10 @@ import json
 import os
 from mongoengine import Document, StringField, ReferenceField, ListField, connect
 from dotenv import load_dotenv
+from producer import producer
+from consumer import consumer
 
-# Завантажуємо змінні з .env файлу
+# Завантажуємо зміни з .env файлу
 load_dotenv()
 
 # Отримуємо URI MongoDB з файлу .env
@@ -21,53 +23,58 @@ class Author(Document):
 
 # Модель для цитат
 class Quote(Document):
-    author = ReferenceField(Author, reverse_delete_rule='CASCADE')
-    quote_text = StringField(required=True)
-    tags = ListField(StringField())
+    author = ReferenceField(Author, required=True)
+    text = StringField(required=True)
+    tags = ListField(StringField())  # Додаємо теги
 
-# Завантаження авторів з файлу authors.json
+# Завантаження авторів з JSON файлу
 def load_authors():
     with open('authors.json', 'r') as file:
         authors_data = json.load(file)
-        for author_data in authors_data:
+
+        for item in authors_data:
             author = Author(
-                fullname=author_data['fullname'],
-                born_date=author_data.get('born_date', ''),
-                born_location=author_data.get('born_location', ''),
-                description=author_data.get('description', '')
+                fullname=item['fullname'],
+                born_date=item['born_date'],
+                born_location=item['born_location'],
+                description=item['description']
             )
             author.save()
     print("Автори успішно завантажені.")
 
-# Завантаження цитат з файлу quotes.json
+# Завантаження цитат з JSON файлу
 def load_quotes():
     with open('quotes.json', 'r') as file:
         quotes_data = json.load(file)
-        for quote_data in quotes_data:
-            author = Author.objects(fullname=quote_data['author']).first()
+
+        for item in quotes_data:
+            author_name = item['author']
+            quote_text = item['quote']
+            tags = item.get('tags', [])  # Отримуємо теги з цитати, якщо є
+
+            author = Author.objects(fullname=author_name).first()
             if author:
-                quote = Quote(
-                    author=author,
-                    quote_text=quote_data['quote'],
-                    tags=quote_data.get('tags', [])
-                )
+                quote = Quote(author=author, text=quote_text, tags=tags)
                 quote.save()
+            else:
+                print(f"Автор не знайдений: {author_name}")
     print("Цитати успішно завантажені.")
 
 # Функція для пошуку цитат
 def search_quotes():
-    author_name = input("Введіть ім'я автора: ").strip()
-    author = Author.objects(fullname=author_name).first()
-    if author:
-        quotes = Quote.objects(author=author)
-        if quotes:
-            for quote in quotes:
-                print(f"Цитата: {quote.quote_text}")
-                print(f"Теги: {', '.join(quote.tags)}")
-        else:
-            print(f"Цитати для автора {author_name} не знайдені.")
+    search = input("Введіть ім'я автора або тег для пошуку: ").strip()
+
+    if search.startswith('tag:'):
+        tag = search.split(':')[1]
+        quotes = Quote.objects(tags=tag)
     else:
-        print(f"Автор {author_name} не знайдений.")
+        quotes = Quote.objects(author__fullname=search)
+    
+    if quotes:
+        for quote in quotes:
+            print(f"{quote.author.fullname}: {quote.text}")
+    else:
+        print(f"Цитати для '{search}' не знайдені.")
 
 # Головне меню
 def main_menu():
@@ -83,10 +90,9 @@ def main_menu():
         elif choice == '2':
             search_quotes()
         elif choice == '3':
-            print("До побачення!")
             break
         else:
-            print("Неправильний вибір, спробуйте ще раз.")
+            print("Невірна опція, спробуйте ще раз.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main_menu()
